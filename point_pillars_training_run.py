@@ -8,7 +8,7 @@ from network import build_point_pillar_graph
 from processors import SimpleDataGenerator
 from readers import KittiDataReader
 
-DATA_ROOT = "/home/ferronfr/Downloads/small"  # TODO make main arg
+DATA_ROOT = "/mnt/c/Users/anjul/Documents/LiDAR dataset/Kitti_dataset"  # TODO make main arg
 
 if __name__ == "__main__":
 
@@ -33,9 +33,9 @@ if __name__ == "__main__":
 
     data_reader = KittiDataReader()
 
-    lidar_files = sorted(glob(os.path.join(DATA_ROOT, "velodyne", "*.bin")))
-    label_files = sorted(glob(os.path.join(DATA_ROOT, "label", "*.txt")))
-    calibration_files = sorted(glob(os.path.join(DATA_ROOT, "calib", "*.txt")))
+    lidar_files = sorted(glob(os.path.join(DATA_ROOT, "velodyne", "training", "velodyne", "*.bin")))
+    label_files = sorted(glob(os.path.join(DATA_ROOT, "label_2", "training", "label_2", "*.txt")))
+    calibration_files = sorted(glob(os.path.join(DATA_ROOT, "calib", "training", "calib", "*.txt")))
 
     training_gen = SimpleDataGenerator(data_reader, params.batch_size, lidar_files, label_files, calibration_files)
 
