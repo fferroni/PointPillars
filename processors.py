@@ -6,6 +6,7 @@ from tensorflow.python.keras.utils.data_utils import Sequence
 from config import Parameters
 from point_pillars import createPillars, createPillarsTarget
 from readers import DataReader, Label3D
+from sklearn.utils import shuffle
 
 
 def select(x, m):
@@ -132,7 +133,7 @@ class SimpleDataGenerator(DataProcessor, Sequence):
 
     def __getitem__(self, batch_id: int):
         file_ids = np.arange(batch_id * self.batch_size, self.batch_size * (batch_id + 1))
-
+#         print("inside getitem")
         pillars = []
         voxels = []
         occupancy = []
@@ -177,9 +178,11 @@ class SimpleDataGenerator(DataProcessor, Sequence):
             return [pillars, voxels]
 
     def on_epoch_end(self):
-        shuffled_indices = np.random.permutation(np.arange(0, len(self.lidar_files)))
-        self.lidar_files = self.lidar_files[shuffled_indices]
+#         print("inside epoch")
+#         shuffled_indices = np.random.permutation(np.arange(0, len(self.lidar_files)))
+#         self.lidar_files = self.lidar_files[shuffled_indices]
 
         if self.label_files is not None:
-            self.calibration_files = self.calibration_files[shuffled_indices]
-            self.label_files = self.label_files[shuffled_indices]
+            self.lidar_files, self.label_files, self.calibration_files = shuffle(self.lidar_files, self.label_files, self.calibration_files)
+#             self.calibration_files = self.calibration_files[shuffled_indices]
+#             self.label_files = self.label_files[shuffled_indices]
