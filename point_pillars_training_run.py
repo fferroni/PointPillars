@@ -25,7 +25,7 @@ if __name__ == "__main__":
     log_dir = "./logs"
     callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
-        tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(log_dir, "model.h5"), save_best_only=True),
+        tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(log_dir, "model.h5"), monitor='loss', save_best_only=True),
         tf.keras.callbacks.LearningRateScheduler(
             lambda epoch, lr: lr * 0.8 if ((epoch % 15 == 0) and (epoch != 0)) else lr, verbose=True),
         tf.keras.callbacks.EarlyStopping(patience=20),
