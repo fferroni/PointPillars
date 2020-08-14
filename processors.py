@@ -7,6 +7,7 @@ from config import Parameters
 from point_pillars import createPillars, createPillarsTarget
 from readers import DataReader, Label3D
 from sklearn.utils import shuffle
+import sys
 
 
 def select(x, m):
@@ -61,17 +62,22 @@ class DataProcessor(Parameters):
 
     def make_ground_truth(self, labels: List[Label3D]):
 
-        # filter by class
+        # filter labels by classes (cars, pedestrians and Trams)
+        # Label has 4 properties (Classification (0th index of labels file), 
+        # centroid coordinates, dimensions, yaw)
         labels = list(filter(lambda x: x.classification in self.classes, labels))
-
+        
         if len(labels) == 0:
             return
-
+        
+        
+        #For each label file, generate these properties except for the Don't care class
         target_positions = np.array([label.centroid for label in labels], dtype=np.float32)
         target_dimension = np.array([label.dimension for label in labels], dtype=np.float32)
         target_yaw = np.array([label.yaw for label in labels], dtype=np.float32)
         target_class = np.array([self.classes[label.classification] for label in labels], dtype=np.int32)
-
+        
+        
         assert np.all(target_yaw >= -np.pi) & np.all(target_yaw <= np.pi)
         assert len(target_positions) == len(target_dimension) == len(target_yaw) == len(target_class)
 
@@ -96,11 +102,23 @@ class DataProcessor(Parameters):
                                      self.z_max,
                                      False)
 
-        best_anchors = target[..., 0:1].argmax(0)
+        print("Target shape", target.shape)
+#         print(target[...,0:1].shape)
+#         print(target)
+#         sys.exit()
+        # target[..., 0:1] gets the 0th value of 10 dim tensor for every (object,xgridcell,ygridcell,anchor)
+        # We are trying to get the index of best anchors for each (object, xgridcell, ygridcell)
+        best_anchors = target[..., 0:1].argmax(0) #This always returns zero. Verify that this is correct. 
+#         print("Best Anchor shape", best_anchors.shape)
+#         print(best_anchors)
         selection = select(target, best_anchors)
-
+        print("Selection shape", selection.shape)
+        sys.exit()
+        # Selection is best anchor for each (object, xgridcell, ygridcell). See that this is a 10 dim vector containing info about the best anchor for each grid cell. 
+        
         # one hot encoding of class
-        clf = selection[..., 9]
+        clf = selection[..., 9] #9th vector contains the classification id
+        # clf contains the class if of best anchor for each grid cell
         clf[clf == -1] = 0
         ohe = np.eye(self.nb_classes)[np.array(clf, dtype=np.int32).reshape(-1)]
         ohe = ohe.reshape(list(clf.shape) + [self.nb_classes])
@@ -142,9 +160,12 @@ class SimpleDataGenerator(DataProcessor, Sequence):
         angle = []
         heading = []
         classification = []
-
+        
+        
         for i in file_ids:
             lidar = self.data_reader.read_lidar(self.lidar_files[i])
+            # For each file, dividing the space into a x-y grid to create pillars
+            # Voxels are the pillar ids
             pillars_, voxels_ = self.make_point_pillars(lidar)
 
             pillars.append(pillars_)
@@ -153,7 +174,11 @@ class SimpleDataGenerator(DataProcessor, Sequence):
             if self.label_files is not None:
                 label = self.data_reader.read_label(self.label_files[i])
                 R, t = self.data_reader.read_calibration(self.calibration_files[i])
+                # Labels are transformed into the lidar coordinate bounding boxes
+                # Label has 7 values, centroid, dimensions and yaw value. 
                 label_transformed = self.transform_labels_into_lidar_coordinates(label, R, t)
+                # These definitions can be found in point_pillars.cpp file
+                # We are splitting a 10 dim vector that contains this information.
                 occupancy_, position_, size_, angle_, heading_, classification_ = self.make_ground_truth(label_transformed)
 
                 occupancy.append(occupancy_)
@@ -173,6 +198,29 @@ class SimpleDataGenerator(DataProcessor, Sequence):
             angle = np.array(angle)
             heading = np.array(heading)
             classification = np.array(classification)
+#             print(pillars[0], pillars[0].shape)
+#             print("..................")
+#             print(voxels[0], voxels[0].shape)
+#             print("..................")
+#             print(occupancy[0], occupancy[0].shape)
+#             print("..................")
+#             print(position[0], position[0].shape)
+#             print("..................")
+#             print(size[0], size[0].shape)
+#             print("..................")
+#             print(angle[0], angle[0].shape)
+#             print("..................")
+#             print(heading[0], heading[0].shape)
+#             print("..................")
+#             print(classification[0], classification[0].shape)
+#             sys.exit()
+            '''
+            Pillars (12000,100,7) for 12000 pillars, each pillar has 100 points (included zero padded points). And each point has 7 values (x,y,z,intensity,xc,yc,zc).
+            
+            Voxels (12000,3) The x,y,z center of each pillar.
+            
+            Occupancy, Position, Size, Angle, Heading, Classification are calculated from point_pillars.cpp file where we are splitting a 10 dim vector
+            '''
             return [pillars, voxels], [occupancy, position, size, angle, heading, classification]
         else:
             return [pillars, voxels]

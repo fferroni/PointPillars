@@ -27,8 +27,10 @@ if __name__ == "__main__":
     calibration_files = sorted(glob(os.path.join(DATA_ROOT, "calib", "*.txt")))
 
     eval_gen = SimpleDataGenerator(data_reader, params.batch_size, lidar_files, label_files, calibration_files)
-
-    pred = pillar_net.predict(eval_gen)
-
-    print(pred)
+    # eval_gen returns voxels and pillar_index for that bin file
+#     print(eval_gen)
+    occupancy, loc, size, angle, heading, clf = pillar_net.predict(eval_gen)
+    
+    
+    
     
