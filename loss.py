@@ -39,7 +39,7 @@ class PointPillarNetworkLoss:
 
     def loc_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor):
         mask = tf.tile(tf.expand_dims(self.mask, -1), [1, 1, 1, 1, 3])
-        loss = tf.losses.huber_loss(y_true,
+        loss = tf.compat.v1.losses.huber_loss(y_true,
                                     y_pred,
                                     reduction="none")
 
@@ -48,7 +48,7 @@ class PointPillarNetworkLoss:
 
     def size_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor):
         mask = tf.tile(tf.expand_dims(self.mask, -1), [1, 1, 1, 1, 3])
-        loss = tf.losses.huber_loss(y_true,
+        loss = tf.compat.v1.losses.huber_loss(y_true,
                                     y_pred,
                                     reduction="none")
 
@@ -56,7 +56,7 @@ class PointPillarNetworkLoss:
         return self.size_weight * tf.reduce_mean(masked_loss)
 
     def angle_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor):
-        loss = tf.losses.huber_loss(y_true,
+        loss = tf.compat.v1.losses.huber_loss(y_true,
                                     y_pred,
                                     reduction="none")
 
@@ -69,6 +69,6 @@ class PointPillarNetworkLoss:
         return self.heading_weight * tf.reduce_mean(masked_loss)
 
     def class_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor):
-        loss = tf.losses.sigmoid_cross_entropy(y_true, y_pred, reduction="none")
+        loss = tf.compat.v1.losses.sigmoid_cross_entropy(y_true, y_pred, reduction="none")
         masked_loss = tf.boolean_mask(loss, self.mask)
         return self.class_weight * tf.reduce_mean(masked_loss)

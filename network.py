@@ -113,6 +113,6 @@ def build_point_pillar_graph(params: Parameters):
     clf = tf.keras.layers.Reshape(tuple(i // 2 for i in image_size) + (nb_anchors, nb_classes), name="clf/reshape")(clf)
 
     pillar_net = tf.keras.models.Model([input_pillars, input_indices], [occ, loc, size, angle, heading, clf])
-    print(pillar_net.summary())
+#     print(pillar_net.summary())
 
     return pillar_net

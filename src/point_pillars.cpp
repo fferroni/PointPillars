@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <cmath>
+namespace py = pybind11;
 
 struct IntPairHash {
   std::size_t operator()(const std::pair<uint32_t, uint32_t> &p) const {
@@ -351,25 +352,33 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
                                              float zMax,
                                              bool printTime = false)
 {
+    
     std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
     const auto xSize = static_cast<int>(std::floor((xMax - xMin) / (xStep * downscalingFactor)));
+//     py::print("xSize", xSize);
     const auto ySize = static_cast<int>(std::floor((yMax - yMin) / (yStep * downscalingFactor)));
+//     py::print("ySize", ySize);
 
-    const int nbAnchors = anchorDimensions.shape()[0];
+    const int nbAnchors = anchorDimensions.shape()[0]; //4 Number of anchors
+//     py::print("nbAnchors", nbAnchors);
+//     Anchor length
 
     if (nbAnchors <= 0)
     {
         throw std::runtime_error("Anchor length is zero");
     }
 
-    const int nbObjects = objectDimensions.shape()[0];
+    const int nbObjects = objectDimensions.shape()[0]; //6 Number of labels inside a label.txt file
+//     BB dimensions from the label file
     if (nbObjects <= 0)
     {
         throw std::runtime_error("Object length is zero");
     }
+//     py::print("nbObjects", nbObjects);
 
     // parse numpy arrays
+//     Preparing the anchor bounding box
     std::vector<BoundingBox3D> anchorBoxes = {};
     std::vector<float> anchorDiagonals;
     for (int i = 0; i < nbAnchors; ++i)
@@ -382,11 +391,12 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
         anchorBox.height = anchorDimensions.at(i, 2);
         anchorBox.z = anchorZHeights.at(i);
         anchorBox.yaw = anchorYaws.at(i);
-        anchorBoxes.emplace_back(anchorBox);
-
+        anchorBoxes.emplace_back(anchorBox); // Appends a new anchorBox to the AnchorBoxes container
+        // Note that anchor box doesn't have a classId as of now.
         anchorDiagonals.emplace_back(std::sqrt(std::pow(anchorBox.width, 2) + std::pow(anchorBox.length, 2)));
     }
 
+//     Preparing the label bounding box
     std::vector<BoundingBox3D> labelBoxes = {};
     for (int i = 0; i < nbObjects; ++i)
     {
@@ -409,10 +419,11 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
     }
 
     pybind11::array_t<float> tensor;
-    tensor.resize({nbObjects, xSize, ySize, nbAnchors, 10});
-
+    tensor.resize({nbObjects, xSize, ySize, nbAnchors, 10}); //Tensor of size (6,252,252,4,10) for first file
+    
     pybind11::buffer_info tensor_buffer = tensor.request();
     float *ptr1 = (float *) tensor_buffer.ptr;
+    // Zero filling the tensor. Every element is presently zero
     for (size_t idx = 0; idx < nbObjects * xSize * ySize * nbAnchors * 10; idx++)
     {
         ptr1[idx] = 0;
@@ -421,15 +432,23 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
     int objectCount = 0;
     if (printTime)
     {
-        std::cout << "Received " << labelBoxes.size() << " objects" << std::endl;
+//         std::cout << "Received " << labelBoxes.size() << " objects" << std::endl;
+//         py::print("Received "+str(labelBoxes.size())+" objects");
     }
-    for (const auto& labelBox: labelBoxes)
+    for (const auto& labelBox: labelBoxes) //For every label box which is a 3d bounding box
     {
         // zone-in on potential spatial area of interest
+        // Length of (length,z) axis diagonal. 
         float objectDiameter = std::sqrt(std::pow(labelBox.height, 2) + std::pow(labelBox.length, 2));
+        // Offset = Number of x axis grid boxes that can fit on the object diameter
         const auto offset = static_cast<int>(std::ceil(objectDiameter / (xStep * downscalingFactor)));
+        // Xc = Number of x axis grid boxes that can fit between Xmin and Label's x coordinate
         const auto xC = static_cast<int>(std::floor((labelBox.x - xMin) / (xStep * downscalingFactor)));
+        // XStart = Start from Xc - Number of boxes in object's diameter.
+        // For example the object is located at 5 unites and is 2 unites long. Then Xstart will begin
+        // the search from 3
         const auto xStart = clip(xC - offset, 0, xSize);
+        // Similarly end the search at 8 units. Because the object cannot extend beyond that.
         const auto xEnd = clip(xC + offset, 0, xSize);
         const auto yC = static_cast<int>(std::floor((labelBox.y - yMin) / (yStep * downscalingFactor)));
         const auto yStart = clip(yC - offset, 0, ySize);
@@ -438,20 +457,25 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
         float maxIou = 0;
         BoundingBox3D bestAnchor = {};
         int bestAnchorId = 0;
-        for (int xId = xStart; xId < xEnd; xId++)
+        for (int xId = xStart; xId < xEnd; xId++) // Iterate through every box within search diameter
+            // In our example case, from 3 till 8
         {
             const float x = xId * xStep * downscalingFactor + xMin;
-
-            for (int yId = yStart; yId < yEnd; yId++)
+            // Getting the real world x coordinate
+            for (int yId = yStart; yId < yEnd; yId++) // Iterate through every box within search diamter in y axis
             {
                 const float y = yId * yStep * downscalingFactor + yMin;
+                // Get the real world y coordinates
                 int anchorCount = 0;
-                for (auto& anchorBox: anchorBoxes)
+                for (auto& anchorBox: anchorBoxes) // For every anchor box (4 in our case)
+                    // Note that we are checking every anchor box for every label in the file
                 {
-                    anchorBox.x = x;
-                    anchorBox.y = y;
+                    anchorBox.x = x; // Assign the real world x and y coordinate to the anchor box
+                    anchorBox.y = y; // Note that anchor boxes originally didn't have Xs and Ys.
+                    // This is because we need ot check them along the X-Y grid.
+                    // However, they did have a z value attached to them. 
 
-                    const float iouOverlap = iou(anchorBox, labelBox);
+                    const float iouOverlap = iou(anchorBox, labelBox); // Get IOU between two 3D boxes.
 
                     if (maxIou < iouOverlap)
                     {
@@ -460,23 +484,24 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
                         bestAnchorId = anchorCount;
                     }
 
-                    if (iouOverlap > positiveThreshold)
+                    if (iouOverlap > positiveThreshold) // Accept the Anchor. Add the anchor details to the tensor.
                     {
-                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 0) = 1;
+                        // Tensor at CurrentObject Id, xth grid cell, yth grid cell, currentAnchor, 0
+                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 0) = 1; 
 
                         auto diag = anchorDiagonals[anchorCount];
-                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 1) = (labelBox.x - anchorBox.x) / diag;
+                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 1) = (labelBox.x - anchorBox.x) / diag; // delta x,y,z
                         tensor.mutable_at(objectCount, xId, yId, anchorCount, 2) = (labelBox.y - anchorBox.y) / diag;
                         tensor.mutable_at(objectCount, xId, yId, anchorCount, 3) = (labelBox.z - anchorBox.z) / anchorBox.height;
 
-                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 4) = std::log(labelBox.length / anchorBox.length);
+                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 4) = std::log(labelBox.length / anchorBox.length); // delta l,w,h
                         tensor.mutable_at(objectCount, xId, yId, anchorCount, 5) = std::log(labelBox.width / anchorBox.width);
                         tensor.mutable_at(objectCount, xId, yId, anchorCount, 6) = std::log(labelBox.height / anchorBox.height);
 
-                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 7) = std::sin(labelBox.yaw - anchorBox.yaw);
-                        if (labelBox.yaw > 0)
+                        tensor.mutable_at(objectCount, xId, yId, anchorCount, 7) = std::sin(labelBox.yaw - anchorBox.yaw); //delta yaw
+                        if (labelBox.yaw > 0) // Is yaw > 0
                         {
-                            tensor.mutable_at(objectCount, xId, yId, anchorCount, 8) = 1;
+                            tensor.mutable_at(objectCount, xId, yId, anchorCount, 8) = 1; 
                         }
                         else
                         {
@@ -500,12 +525,15 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
             }
         }
 
-        if (maxIou < positiveThreshold)
+        if (maxIou < positiveThreshold) // Comparing maxIOU for that object obtained after checking with every anchor box
+            // If none of the anchors passed the threshold, then we place the best anchor details for that object. 
         {
             if (printTime)
             {
-                std::cout << "\nThere was no sufficiently overlapping anchor anywhere for object " << objectCount << std::endl;
-                std::cout << "Best IOU was " << maxIou << ". Adding the best location regardless of threshold." << std::endl;
+//                 std::cout << "\nThere was no sufficiently overlapping anchor anywhere for object " << objectCount << std::endl;
+//                 py::print("There was no sufficiently overlapping anchor anywhere for object " +str(objectCount));
+//                 std::cout << "Best IOU was " << maxIou << ". Adding the best location regardless of threshold." << std::endl;
+//                 py::print("Best IOU was "+str(maxIou)+" Adding the best location regardless of threshold");
             }
 
             const auto xId = static_cast<int>(std::floor((labelBox.x - xMin) / (xStep * downscalingFactor)));
@@ -531,6 +559,7 @@ pybind11::array_t<float> createPillarsTarget(const pybind11::array_t<float>& obj
             {
                 tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 8) = 0;
             }
+//             Class id is the classification label (0,1,2,3)
             tensor.mutable_at(objectCount, xId, yId, bestAnchorId, 9) = labelBox.classId;
         }
         else
